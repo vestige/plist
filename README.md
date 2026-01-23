@@ -1,27 +1,25 @@
-# plist
-
-## 前提
+== 前提
 * 動かすのにPython3が必要
 
-## サーバーの起動
+== サーバーの起動
 
     python -m uvicorn main:app --reload --port 8000
 
-## ブラウザでアクセス
+== ブラウザでアクセス
 * http://127.0.0.1:8000/ui/assets
 
-## データについて
+== データについて
 * bulk_load_sqlite.py
 
-### 全削除
+=== 全削除
     python bulk_load_sqlite.py --db equip.db --wipe
 
-### CSVデータの登録
-    python bulk_load_sqlite.py --db equip.db --wipe --csv equip_import_test_en.csv
+=== CSVデータの登録
+    python bulk_load_sqlite.py --db equip.db --wipe --csv .\test\equip_import_test_en.csv
 
-### CSVデータの追記
-    python bulk_load_sqlite.py --db equip.db --csv equip_import_hogehoge.csv
+=== CSVデータの追記
+    python bulk_load_sqlite.py --db equip.db --csv .\test\equip_import_hogehoge.csv
 
-## テスト
+== テスト
 
     python -m pytest

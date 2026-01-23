@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>CSVインポート</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    .box { padding: 12px; border: 1px solid #ccc; border-radius: 8px; }
+    .ok { color: #0a7; }
+    .ng { color: #c00; }
+    ul { margin: 8px 0 0; }
+  </style>
+</head>
+<body>
+
+<p><a href="/ui/assets">← 一覧へ戻る</a></p>
+
+<h1>CSVインポート</h1>
+
+<div class="box">
+  <p>列: <code>name, asset_tag, category, location, note</code>（日本語ヘッダも一部OK）</p>
+  <form method="post" action="/ui/import" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".csv,text/csv" required>
+    <button type="submit">アップロードして登録</button>
+  </form>
+</div>
+
+{% if result %}
+  <h2>結果</h2>
+  {% if result.error %}
+    <p class="ng">{{ result.error }}</p>
+  {% else %}
+    <p class="ok">作成: {{ result.created }} / スキップ: {{ result.skipped }}</p>
+    {% if result.errors and result.errors|length > 0 %}
+      <p class="ng">エラー:</p>
+      <ul>
+        {% for e in result.errors %}
+          <li>{{ e }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endif %}
+{% endif %}
+
+</body>
+</html>

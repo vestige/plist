@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>備品一覧</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; }
+    th { background: #f0f0f0; }
+    form { margin-bottom: 16px; }
+    input { margin-right: 8px; }
+  </style>
+</head>
+<body>
+
+{% set base_qs = "q=" ~ (q|urlencode)
+  ~ "&status=" ~ (status|urlencode)
+  ~ "&category=" ~ (category|urlencode)
+  ~ "&location=" ~ (location|urlencode)
+%}
+
+<h1>備品一覧</h1>
+<p><a href="/ui/import">CSVインポート</a> /
+<a href="/ui/assets/export?{{ base_qs }}&sort={{ sort }}&order={{ order }}" style="margin-left: 8px;">CSV出力</a>
+</p>
+
+<form method="get" action="/ui/assets" style="margin-bottom: 12px;">
+  <input name="q" placeholder="Search (name / tag / note)" value="{{ q }}" style="width: 260px;">
+
+  <select name="status">
+    <option value="" {% if status == "" %}selected{% endif %}>All status</option>
+    <option value="available" {% if status == "available" %}selected{% endif %}>available</option>
+    <option value="loaned" {% if status == "loaned" %}selected{% endif %}>loaned</option>
+    <option value="retired" {% if status == "retired" %}selected{% endif %}>retired</option>
+  </select>
+
+  <select name="category">
+    <option value="" {% if category == "" %}selected{% endif %}>All category</option>
+    {% for c in categories %}
+      <option value="{{ c }}" {% if category == c %}selected{% endif %}>{{ c }}</option>
+    {% endfor %}
+  </select>
+
+  <select name="location">
+    <option value="" {% if location == "" %}selected{% endif %}>All location</option>
+    {% for l in locations %}
+      <option value="{{ l }}" {% if location == l %}selected{% endif %}>{{ l }}</option>
+    {% endfor %}
+  </select>
+
+  <select name="sort">
+    <option value="asset_tag" {% if sort == "asset_tag" %}selected{% endif %}>Sort: asset_tag</option>
+    <option value="name" {% if sort == "name" %}selected{% endif %}>Sort: name</option>
+    <option value="updated_at" {% if sort == "updated_at" %}selected{% endif %}>Sort: updated_at</option>
+  </select>
+
+  <select name="order">
+    <option value="asc" {% if order == "asc" %}selected{% endif %}>ASC</option>
+    <option value="desc" {% if order == "desc" %}selected{% endif %}>DESC</option>
+  </select>
+
+  <button type="submit">Apply</button>
+
+  <a href="/ui/assets" style="margin-left: 8px;">Reset</a>
+</form>
+
+
+<form method="get" action="/ui/assets">
+  <input name="q" placeholder="検索（名前/管理番号）" value="{{ q }}">
+  <button type="submit">検索</button>
+</form>
+
+<h2>備品追加</h2>
+<form method="post" action="/ui/assets">
+  <input name="name" placeholder="名前" required>
+  <input name="asset_tag" placeholder="管理番号" required>
+  <input name="category" placeholder="カテゴリ">
+  <input name="location" placeholder="場所">
+  <input name="note" placeholder="メモ">
+  <button type="submit">追加</button>
+</form>
+
+<div style="margin: 10px 0;">
+  <span>件数: {{ total }} / ページ: {{ page }} / {{ total_pages }}</span>
+
+  <span style="margin-left: 12px;">
+    {% if page > 1 %}
+      <a href="/ui/assets?{{ base_qs }}&sort={{ sort }}&order={{ order }}&page=1">« First</a>
+      <a href="/ui/assets?{{ base_qs }}&sort={{ sort }}&order={{ order }}&page={{ page - 1 }}">‹ Prev</a>
+    {% else %}
+      « First ‹ Prev
+    {% endif %}
+  </span>
+
+  <span style="margin-left: 12px;">
+    {% if page < total_pages %}
+      <a href="/ui/assets?{{ base_qs }}&sort={{ sort }}&order={{ order }}&page={{ page + 1 }}">Next ›</a>
+      <a href="/ui/assets?{{ base_qs }}&sort={{ sort }}&order={{ order }}&page={{ total_pages }}">Last »</a>
+    {% else %}
+      Next › Last »
+    {% endif %}
+  </span>
+</div>
+
+<h2>一覧</h2>
+<table>
+  <tr>
+    <th>
+      {% set next_order = "desc" if (sort == "name" and order == "asc") else "asc" %}
+      <a href="/ui/assets?{{ base_qs }}&sort=name&order={{ next_order }}&page=1">
+        名前
+        {% if sort == "name" %}{{ "▲" if order == "asc" else "▼" }}{% endif %}
+      </a>
+    </th>
+    <th>
+      {% set next_order = "desc" if (sort == "asset_tag" and order == "asc") else "asc" %}
+      <a href="/ui/assets?{{ base_qs }}&sort=asset_tag&order={{ next_order }}&page=1">
+        管理番号
+        {% if sort == "asset_tag" %}{{ "▲" if order == "asc" else "▼" }}{% endif %}
+      </a>
+    </th>    
+    <th>カテゴリ</th>
+    <th>場所</th>
+    <th>状態</th>
+    <th>
+      {% set next_order = "desc" if (sort == "updated_at" and order == "asc") else "asc" %}
+      <a href="/ui/assets?{{ base_qs }}&sort=updated_at&order={{ next_order }}&page=1">
+        更新日
+        {% if sort == "updated_at" %}{{ "▲" if order == "asc" else "▼" }}{% endif %}
+      </a>
+    </th>
+    <th>操作</th>
+    <th>貸出状況</th>
+    <th>貸出/返却</th>
+  </tr>
+  {% for a in assets %}
+  <tr>
+    <td>{{ a.name }}</td>
+    <td>{{ a.asset_tag }}</td>
+    <td>{{ a.category }}</td>
+    <td>{{ a.location }}</td>
+    <td>{{ a.status }}</td>
+    <td>{{ a.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
+    <td>
+      <a href="/ui/assets/{{ a.id }}/edit">編集</a>
+      |
+      <form method="post" action="/ui/assets/{{ a.id }}/delete" style="display:inline"
+            onsubmit="return confirm('削除しますか？');">
+        <button type="submit">削除</button>
+      </form>
+    </td>
+    <td>
+      {% if a.id in active_loans %}
+        {{ active_loans[a.id].borrower }}
+        {% if active_loans[a.id].due_at %}
+          (期限: {{ active_loans[a.id].due_at.date() }})
+        {% endif %}
+      {% else %}
+        -
+      {% endif %}
+    </td>
+    <td>
+      {% if a.status == "available" %}
+        <form method="post" action="/ui/assets/{{ a.id }}/loan" style="display:inline">
+          <input name="borrower" placeholder="借りた人" required>
+          <input name="due_date" type="date">
+          <button type="submit">貸出</button>
+        </form>
+      {% elif a.status == "loaned" %}
+        <form method="post" action="/ui/assets/{{ a.id }}/return" style="display:inline"
+              onsubmit="return confirm('返却にしますか？');">
+          <button type="submit">返却</button>
+        </form>
+      {% else %}
+        -
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+</body>
+</html>

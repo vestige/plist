@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>備品編集</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    label { display:block; margin: 10px 0 4px; }
+    input, select { width: 420px; padding: 6px; }
+    .row { margin-top: 14px; }
+    a { color: #0366d6; text-decoration: none; }
+    .btn { padding: 6px 10px; }
+  </style>
+</head>
+<body>
+
+<p><a href="/ui/assets">← 一覧へ戻る</a></p>
+
+<h1>備品編集</h1>
+
+<form method="post" action="/ui/assets/{{ asset.id }}/edit">
+  <label>名前</label>
+  <input name="name" value="{{ asset.name }}" required>
+
+  <label>管理番号</label>
+  <input name="asset_tag" value="{{ asset.asset_tag }}" required>
+
+  <label>カテゴリ</label>
+  <input name="category" value="{{ asset.category or '' }}">
+
+  <label>場所</label>
+  <input name="location" value="{{ asset.location or '' }}">
+
+  <label>メモ</label>
+  <input name="note" value="{{ asset.note or '' }}">
+
+  <label>状態</label>
+  <select name="status">
+    <option value="available" {% if asset.status == "available" %}selected{% endif %}>available</option>
+    <option value="loaned" {% if asset.status == "loaned" %}selected{% endif %}>loaned</option>
+    <option value="retired" {% if asset.status == "retired" %}selected{% endif %}>retired</option>
+  </select>
+
+  <div class="row">
+    <button class="btn" type="submit">更新</button>
+  </div>
+</form>
+
+</body>
+</html>
