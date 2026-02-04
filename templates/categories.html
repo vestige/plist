@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>カテゴリ管理</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 6px 8px; }
+    th { background: #f0f0f0; }
+    form { margin: 0; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .nav { margin-bottom: 16px; }
+    .nav a { margin-right: 12px; }
+    input[type="text"] { width: 240px; }
+    input[type="number"] { width: 90px; }
+  </style>
+</head>
+<body>
+
+<div class="nav">
+  <a href="/ui/assets">備品一覧</a>
+  <a href="/ui/categories">カテゴリ</a>
+  <a href="/ui/locations">場所</a>
+</div>
+
+<h1>カテゴリ管理</h1>
+
+<h2>追加</h2>
+<form method="post" action="/ui/categories">
+  <div class="row">
+    <input name="name" placeholder="カテゴリ名" required>
+    <input name="sort_order" type="number" value="0">
+    <button type="submit">追加</button>
+  </div>
+</form>
+
+<h2>一覧</h2>
+<table>
+  <tr>
+    <th>名前</th>
+    <th>操作</th>
+  </tr>
+  {% for (cid, name) in categories %}
+  <tr>
+    <td>{{ name }}</td>
+    <td>
+      <form method="post" action="/ui/categories/{{ cid }}/rename" style="display:inline">
+        <input name="new_name" value="{{ name }}" required>
+        <label style="margin-left:6px;">
+          <input type="checkbox" name="cascade_assets" checked>
+          既存備品も更新
+        </label>
+        <button type="submit">名前変更</button>
+      </form>
+
+      <form method="post" action="/ui/categories/{{ cid }}/delete" style="display:inline"
+            onsubmit="return confirm('削除しますか？（使用中だと削除できません）');">
+        <button type="submit">削除</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+
+</body>
+</html>

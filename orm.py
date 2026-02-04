@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import String, DateTime, Text, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,6 +12,10 @@ class AssetORM(Base):
     asset_tag: Mapped[str] = mapped_column(String, nullable=False, unique=True, index=True)
     category: Mapped[str | None] = mapped_column(String, nullable=True)
     location: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    category_id: Mapped[str | None] = mapped_column(String, ForeignKey("categories.id"), nullable=True, index=True)
+    location_id: Mapped[str | None] = mapped_column(String, ForeignKey("locations.id"), nullable=True, index=True)
+
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     status: Mapped[str] = mapped_column(String, nullable=False, default="available")
@@ -41,8 +45,8 @@ class CategoryORM(Base):
 
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
 
 
 class LocationORM(Base):
@@ -53,5 +57,5 @@ class LocationORM(Base):
 
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))

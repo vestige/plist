@@ -26,10 +26,20 @@
   <input name="asset_tag" value="{{ asset.asset_tag }}" required>
 
   <label>カテゴリ</label>
-  <input name="category" value="{{ asset.category or '' }}">
+  <select name="category">
+    <option value="">（カテゴリ未設定）</option>
+    {% for cid, cname in categories %}
+      <option value="{{ cname }}" {% if (asset.category or "") == cname %}selected{% endif %}>{{ cname }}</option>
+    {% endfor %}
+  </select>
 
   <label>場所</label>
-  <input name="location" value="{{ asset.location or '' }}">
+  <select name="location">
+    <option value="">（場所未設定）</option>
+    {% for lid, lname in locations %}
+      <option value="{{ lname }}" {% if (asset.location or "") == lname %}selected{% endif %}>{{ lname }}</option>
+    {% endfor %}
+  </select>
 
   <label>メモ</label>
   <input name="note" value="{{ asset.note or '' }}">

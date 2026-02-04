@@ -27,7 +27,16 @@ def app_module(tmp_path_factory):
         encoding="utf-8",
     )
     (tmpl_dir / "asset_edit.html").write_text(
-        "<html><body>edit ok</body></html>",
+        "<html><body>edit ok {{ asset.name }} {% for c in categories %}{{ c }}{% endfor %}</body></html>",
+        encoding="utf-8",
+    )
+    (tmpl_dir / "categories.html").write_text(
+    "<html><body>categories ok {% for (cid, name) in categories %}{{ name }}{% endfor %}</body></html>",
+    encoding="utf-8",
+    )
+
+    (tmpl_dir / "locations.html").write_text(
+        "<html><body>locations ok {% for (lid, name) in locations %}{{ name }}{% endfor %}</body></html>",
         encoding="utf-8",
     )
 

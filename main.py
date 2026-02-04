@@ -2,11 +2,15 @@ from fastapi import FastAPI, HTTPException, Request, Form, UploadFile, File, Dep
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
+import logging
+import time
 
 from models import Asset, AssetIn, AssetUpdate, Status, AssetsMeta
+from orm import CategoryORM, LocationORM
 from db import Base, SessionLocal, engine
 from csv_utils import decode_csv_bytes, normalize_header, assets_to_csv_response, csv_bytes_to_rows
 
@@ -16,8 +20,42 @@ import crud
 app = FastAPI(title="備品管理API")
 templates = Jinja2Templates(directory="templates")
 
-# テーブルを自動作成（最初だけ）
 Base.metadata.create_all(bind=engine)
+
+# -----------------------
+# Logging
+# -----------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("app")
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.time()
+    response = await call_next(request)
+    elapsed_ms = int((time.time() - start) * 1000)
+    logger.info(
+        "method=%s path=%s status=%s elapsed_ms=%s",
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed_ms,
+    )
+    return response
+
+def resolve_category_id(db: Session, name: str | None) -> str | None:
+    if not name:
+        return None
+    row = db.execute(select(CategoryORM.id).where(CategoryORM.name == name)).first()
+    return row[0] if row else None
+
+def resolve_location_id(db: Session, name: str | None) -> str | None:
+    if not name:
+        return None
+    row = db.execute(select(LocationORM.id).where(LocationORM.name == name)).first()
+    return row[0] if row else None
 
 def get_db():
     db = SessionLocal()
@@ -45,7 +83,6 @@ def list_assets_api(
     offset: int = 0,
     db: Session = Depends(get_db),
 ):
-    # ガード（変な値で落ちないように）
     if sort not in ("asset_tag", "name", "updated_at"):
         sort = "asset_tag"
     if order not in ("asc", "desc"):
@@ -58,21 +95,22 @@ def list_assets_api(
     if location == "":
         location = None
 
-    # limit/offset の最低限ガード
     if limit < 1:
         limit = 1
     if limit > 500:
-        limit = 500  # APIで無制限にされないように上限
+        limit = 500
     if offset < 0:
         offset = 0
 
-    # DB側で絞り込み＋ソート＋ページング
+    category_id = resolve_category_id(db, category)
+    location_id = resolve_location_id(db, location)
+
     return crud.list_assets_filtered(
         db,
         q=q,
-        status=status,       # Status Literal でもそのまま通る
-        category=category,
-        location=location,
+        status=status,
+        category_id=category_id,
+        location_id=location_id,
         sort=sort,
         order=order,
         limit=limit,
@@ -96,17 +134,19 @@ def assets_meta_api(
     if location == "":
         location = None
 
+    category_id = resolve_category_id(db, category)
+    location_id = resolve_location_id(db, location)
+
     meta = crud.assets_meta(
         db,
         q=q,
         status=status,
-        category=category,
-        location=location,
+        category_id=category_id,
+        location_id=location_id,
         limit=limit,
         offset=offset,
     )
     return AssetsMeta(**meta)
-
 
 @app.post("/assets", response_model=Asset, status_code=201)
 def create_asset_api(
@@ -116,7 +156,6 @@ def create_asset_api(
     if crud.asset_tag_exists(db, body.asset_tag):
         raise HTTPException(status_code=409, detail="asset_tag already exists")
     return crud.create_asset(db, body)
-
 
 @app.get("/assets/{asset_id}", response_model=Asset)
 def get_asset_api(
@@ -164,8 +203,8 @@ def assets_ui(
     request: Request,
     q: Optional[str] = None,
     status: Optional[str] = None,
-    category: Optional[str] = None,
-    location: Optional[str] = None,
+    category_id: Optional[str] = None,
+    location_id: Optional[str] = None,
     sort: str = "asset_tag",
     order: str = "asc",
     page: int = 1,
@@ -177,12 +216,11 @@ def assets_ui(
 
     if status not in ("available", "loaned", "retired"):
         status = None
-    if category == "":
-        category = None
-    if location == "":
-        location = None
+    if category_id == "":
+        category_id = None
+    if location_id == "":
+        location_id = None
 
-    # sort/order ガード（変なの来ても安全に）
     if sort not in ("asset_tag", "name", "updated_at"):
         sort = "asset_tag"
     if order not in ("asc", "desc"):
@@ -192,8 +230,8 @@ def assets_ui(
         db,
         q=q,
         status=status,
-        category=category,
-        location=location,
+        category_id=category_id,
+        location_id=location_id,
         limit=PAGE_SIZE,
         offset=(page - 1) * PAGE_SIZE,
     )
@@ -208,8 +246,8 @@ def assets_ui(
         db,
         q=q,
         status=status,
-        category=category,
-        location=location,
+        category_id=category_id,
+        location_id=location_id,
         sort=sort,
         order=order,
         limit=PAGE_SIZE,
@@ -222,8 +260,11 @@ def assets_ui(
         if active:
             active_loans[a.id] = active
 
-    categories = crud.list_distinct_values(db, "category")
-    locations = crud.list_distinct_values(db, "location")
+    categories = crud.list_categories(db)
+    locations  = crud.list_locations(db)
+
+    category_map = {cid: cname for cid, cname in categories}
+    location_map = {lid: lname for lid, lname in locations}
 
     return templates.TemplateResponse(
         request,
@@ -232,23 +273,23 @@ def assets_ui(
             "assets": assets,
             "active_loans": active_loans,
 
-            # 検索条件をテンプレに戻す
             "q": q or "",
             "status": status or "",
-            "category": category or "",
-            "location": location or "",
+            "category_id": category_id or "",
+            "location_id": location_id or "",
             "sort": sort,
             "order": order,
 
-            # ページング
             "page": page,
             "total_pages": total_pages,
             "total": total,
             "page_size": PAGE_SIZE,
 
-            # フィルター候補
             "categories": categories,
             "locations": locations,
+
+            "category_map": category_map,
+            "location_map": location_map,
         }
     )
 
@@ -257,28 +298,41 @@ def create_asset_ui(
     name: str = Form(...),
     asset_tag: str = Form(...),
     category: Optional[str] = Form(None),
-    location: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),   
     note: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     if crud.asset_tag_exists(db, asset_tag):
         return RedirectResponse(url="/ui/assets", status_code=303)
 
-    body = AssetIn(name=name, asset_tag=asset_tag, category=category, location=location, note=note)
+    body = AssetIn(
+        name=name, 
+        asset_tag=asset_tag, 
+        category=category, 
+        location=location, 
+        note=note,
+    )
     crud.create_asset(db, body)
     return RedirectResponse(url="/ui/assets", status_code=303)
 
 @app.get("/ui/assets/{asset_id}/edit", response_class=HTMLResponse)
-def edit_asset_ui(
-    request: Request,
-    asset_id: str, 
-    db: Session = Depends(get_db),
-):
+def edit_asset_ui(request: Request, asset_id: str, db: Session = Depends(get_db)):
     asset = crud.get_asset(db, asset_id)
     if not asset:
         raise HTTPException(status_code=404, detail="asset not found")
-    return templates.TemplateResponse("asset_edit.html", {"request": request, "asset": asset})
 
+    categories = crud.list_categories(db)
+    locations  = crud.list_locations(db)
+
+    return templates.TemplateResponse(
+        "asset_edit.html",
+        {
+            "request": request,
+            "asset": asset,
+            "categories": categories,
+            "locations": locations,
+        },
+    )
 
 @app.post("/ui/assets/{asset_id}/edit")
 def update_asset_ui(
@@ -305,7 +359,6 @@ def update_asset_ui(
     crud.update_asset(db, asset_id, body)
     return RedirectResponse(url="/ui/assets", status_code=303)
 
-
 @app.post("/ui/assets/{asset_id}/delete")
 def delete_asset_ui(
     asset_id: str,
@@ -313,7 +366,6 @@ def delete_asset_ui(
 ):
     crud.delete_asset(db, asset_id)
     return RedirectResponse(url="/ui/assets", status_code=303)
-
 
 @app.post("/ui/assets/{asset_id}/loan")
 def loan_asset_ui(
@@ -327,7 +379,6 @@ def loan_asset_ui(
     crud.loan_asset(db, asset_id, borrower=borrower, due_at=due_at, note=note)
     return RedirectResponse(url="/ui/assets", status_code=303)
 
-
 @app.post("/ui/assets/{asset_id}/return")
 def return_asset_ui(
     asset_id: str,
@@ -336,6 +387,81 @@ def return_asset_ui(
     crud.return_asset(db, asset_id)
     return RedirectResponse(url="/ui/assets", status_code=303)
 
+@app.get("/ui/categories", response_class=HTMLResponse)
+def categories_ui(request: Request, db: Session = Depends(get_db)):
+    categories = crud.list_categories(db)  # [(id, name), ...]
+    return templates.TemplateResponse(
+        request,
+        "categories.html",
+        {"categories": categories},
+    )
+
+@app.post("/ui/categories")
+def create_category_ui(
+    name: str = Form(...),
+    sort_order: int = Form(0),
+    db: Session = Depends(get_db),
+):
+    crud.create_category(db, name=name, sort_order=sort_order)
+    return RedirectResponse(url="/ui/categories", status_code=303)
+
+@app.post("/ui/categories/{category_id}/rename")
+def rename_category_ui(
+    category_id: str,
+    new_name: str = Form(...),
+    cascade_assets: str = Form("on"),
+    db: Session = Depends(get_db),
+):
+    cascade = cascade_assets == "on"
+    crud.rename_category(db, category_id=category_id, new_name=new_name, cascade_assets=cascade)
+    return RedirectResponse(url="/ui/categories", status_code=303)
+
+@app.post("/ui/categories/{category_id}/delete")
+def delete_category_ui(
+    category_id: str,
+    db: Session = Depends(get_db),
+):
+    crud.delete_category(db, category_id=category_id)
+    return RedirectResponse(url="/ui/categories", status_code=303)
+
+@app.get("/ui/locations", response_class=HTMLResponse)
+def locations_ui(request: Request, db: Session = Depends(get_db)):
+    locations = crud.list_locations(db)  # [(id, name), ...]
+    return templates.TemplateResponse(
+        request,
+        "locations.html",
+        {"locations": locations},
+    )
+
+@app.post("/ui/locations")
+def create_location_ui(
+    name: str = Form(...),
+    sort_order: int = Form(0),
+    db: Session = Depends(get_db),
+):
+    crud.create_location(db, name=name, sort_order=sort_order)
+    return RedirectResponse(url="/ui/locations", status_code=303)
+
+@app.post("/ui/locations/{location_id}/rename")
+def rename_location_ui(
+    location_id: str,
+    new_name: str = Form(...),
+    cascade_assets: str = Form("on"),
+    db: Session = Depends(get_db),
+):
+    cascade = cascade_assets == "on"
+    crud.rename_location(db, location_id=location_id, new_name=new_name, cascade_assets=cascade)
+    return RedirectResponse(url="/ui/locations", status_code=303)
+
+@app.post("/ui/locations/{location_id}/delete")
+def delete_location_ui(
+    location_id: str,
+    db: Session = Depends(get_db),
+):
+    crud.delete_location(db, location_id=location_id)
+    return RedirectResponse(url="/ui/locations", status_code=303)
+
+# ---------------------------------------------------------
 @app.get("/ui/import", response_class=HTMLResponse)
 def import_ui(request: Request):
     return templates.TemplateResponse(
@@ -391,12 +517,15 @@ def export_assets(
 
     LIMIT = 20000
 
+    category_id = resolve_category_id(db, category)
+    location_id = resolve_location_id(db, location)
+
     assets = crud.list_assets_filtered(
         db,
         q=q,
         status=status,
-        category=category,
-        location=location,
+        category_id=category_id,
+        location_id=location_id,
         sort=sort,
         order=order,
         limit=LIMIT,

@@ -21,9 +21,9 @@
 %}
 
 <h1>備品一覧</h1>
-<p><a href="/ui/import">CSVインポート</a> /
-<a href="/ui/assets/export?{{ base_qs }}&sort={{ sort }}&order={{ order }}" style="margin-left: 8px;">CSV出力</a>
-</p>
+<p>
+<a href="/ui/import">CSVインポート</a> / <a href="/ui/assets/export?{{ base_qs }}&sort={{ sort }}&order={{ order }}">CSV出力</a> ◇ <a href="/ui/categories" target="_blank" rel="noopener">カテゴリ追加</a> / <a href="/ui/locations" target="_blank" rel="noopener">場所追加</a>
+</P>
 
 <form method="get" action="/ui/assets" style="margin-bottom: 12px;">
   <input name="q" placeholder="Search (name / tag / note)" value="{{ q }}" style="width: 260px;">
@@ -35,17 +35,17 @@
     <option value="retired" {% if status == "retired" %}selected{% endif %}>retired</option>
   </select>
 
-  <select name="category">
-    <option value="" {% if category == "" %}selected{% endif %}>All category</option>
-    {% for c in categories %}
-      <option value="{{ c }}" {% if category == c %}selected{% endif %}>{{ c }}</option>
+  <select name="category_id">
+    <option value="">（カテゴリ: すべて）</option>
+    {% for cid, cname in categories %}
+      <option value="{{ cid }}" {% if category_id == cid %}selected{% endif %}>{{ cname }}</option>
     {% endfor %}
   </select>
 
-  <select name="location">
-    <option value="" {% if location == "" %}selected{% endif %}>All location</option>
-    {% for l in locations %}
-      <option value="{{ l }}" {% if location == l %}selected{% endif %}>{{ l }}</option>
+  <select name="location_id">
+    <option value="">（場所: すべて）</option>
+    {% for lid, lname in locations %}
+      <option value="{{ lid }}" {% if location_id == lid %}selected{% endif %}>{{ lname }}</option>
     {% endfor %}
   </select>
 
@@ -65,18 +65,23 @@
   <a href="/ui/assets" style="margin-left: 8px;">Reset</a>
 </form>
 
-
-<form method="get" action="/ui/assets">
-  <input name="q" placeholder="検索（名前/管理番号）" value="{{ q }}">
-  <button type="submit">検索</button>
-</form>
-
 <h2>備品追加</h2>
 <form method="post" action="/ui/assets">
   <input name="name" placeholder="名前" required>
   <input name="asset_tag" placeholder="管理番号" required>
-  <input name="category" placeholder="カテゴリ">
-  <input name="location" placeholder="場所">
+  <select name="category">
+    <option value="">（カテゴリ未設定）</option>
+    {% for cid, cname in categories %}
+      <option value="{{ cname }}">{{ cname }}</option>
+    {% endfor %}
+  </select>
+
+  <select name="location">
+    <option value="">（場所未設定）</option>
+    {% for lid, lname in locations %}
+      <option value="{{ lname }}">{{ lname }}</option>
+    {% endfor %}
+  </select>
   <input name="note" placeholder="メモ">
   <button type="submit">追加</button>
 </form>

@@ -14,6 +14,9 @@ from orm import AssetORM, LoanORM, CategoryORM, LocationORM
 ALLOWED_SORTS = {
     "asset_tag": AssetORM.asset_tag,
     "name": AssetORM.name,
+    "status": AssetORM.status,
+    "category": AssetORM.category,
+    "location": AssetORM.location,    
     "updated_at": AssetORM.updated_at,
 }
 
@@ -41,7 +44,6 @@ def _loan_to_schema(l: LoanORM) -> Loan:
         note=l.note,
     )
 
-
 # ---------- Asset ----------
 def asset_tag_exists(db: Session, asset_tag: str, exclude_asset_id: Optional[str] = None) -> bool:
     stmt = select(AssetORM).where(AssetORM.asset_tag == asset_tag)
@@ -57,12 +59,18 @@ def get_asset(db: Session, asset_id: str) -> Optional[Asset]:
 
 def create_asset(db: Session, body: AssetIn) -> Asset:
     now = datetime.now(timezone.utc)
+
+    category_id = get_or_create_category_id(db, body.category)
+    location_id = get_or_create_location_id(db, body.location)
+
     a = AssetORM(
         id=str(uuid4()),
         name=body.name,
         asset_tag=body.asset_tag,
         category=body.category,
         location=body.location,
+        category_id=category_id,
+        location_id=location_id,
         note=body.note,
         status="available",
         created_at=now,
@@ -73,7 +81,6 @@ def create_asset(db: Session, body: AssetIn) -> Asset:
     db.refresh(a)
     return _asset_to_schema(a)
 
-
 def update_asset(db: Session, asset_id: str, body: AssetUpdate) -> Optional[Asset]:
     a = db.get(AssetORM, asset_id)
     if not a:
@@ -82,20 +89,22 @@ def update_asset(db: Session, asset_id: str, body: AssetUpdate) -> Optional[Asse
     data = body.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(a, k, v)
+
+    a.category_id = get_or_create_category_id(db, body.category) if body.category else None
+    a.location_id = get_or_create_location_id(db, body.location) if body.location else None
+
     a.updated_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(a)
     return _asset_to_schema(a)
 
-
 def delete_asset(db: Session, asset_id: str) -> bool:
     result = db.execute(delete(AssetORM).where(AssetORM.id == asset_id))
     db.commit()
     return result.rowcount > 0
 
-
-def build_assets_query(q: str | None, status: str | None, category: str | None, location: str | None):
+def build_assets_query(q: str | None, status: str | None, category_id: str | None, location_id: str | None):
     stmt = select(AssetORM)
 
     if q:
@@ -109,10 +118,12 @@ def build_assets_query(q: str | None, status: str | None, category: str | None, 
         )
     if status:
         stmt = stmt.where(AssetORM.status == status)
-    if category:
-        stmt = stmt.where(AssetORM.category == category)
-    if location:
-        stmt = stmt.where(AssetORM.location == location)
+
+    if category_id:
+        stmt = stmt.filter(AssetORM.category_id == category_id)
+
+    if location_id:
+        stmt = stmt.filter(AssetORM.location_id == location_id)
 
     return stmt
 
@@ -121,8 +132,8 @@ def assets_meta(
     *,
     q: str | None,
     status: str | None,
-    category: str | None,
-    location: str | None,
+    category_id: str | None,
+    location_id: str | None,
     limit: int,
     offset: int,
 ) -> dict:
@@ -133,7 +144,7 @@ def assets_meta(
     if offset < 0:
         offset = 0
 
-    total = count_assets_filtered(db, q=q, status=status, category=category, location=location)
+    total = count_assets_filtered(db, q=q, status=status, category_id=category_id, location_id=location_id)
     total_pages = max(1, (total + limit - 1) // limit)
 
     return {
@@ -143,8 +154,8 @@ def assets_meta(
         "total_pages": total_pages,
     }
 
-def count_assets_filtered(db: Session, *, q: str | None, status: str | None, category: str | None, location: str | None) -> int:
-    stmt = build_assets_query(q, status, category, location)
+def count_assets_filtered(db: Session, *, q: str | None, status: str | None, category_id: str | None, location_id: str | None) -> int:
+    stmt = build_assets_query(q, status, category_id, location_id)
     count_stmt = select(func.count()).select_from(stmt.subquery())
     return int(db.execute(count_stmt).scalar_one())
 
@@ -153,14 +164,14 @@ def list_assets_filtered(
     *,
     q: str | None,
     status: str | None,
-    category: str | None,
-    location: str | None,
+    category_id: str | None,
+    location_id: str | None,
     sort: str,
     order: str,
     limit: int,
     offset: int,
 ) -> list[Asset]:
-    stmt = build_assets_query(q, status, category, location)
+    stmt = build_assets_query(q, status, category_id, location_id)
 
     col = ALLOWED_SORTS.get(sort, AssetORM.asset_tag)
     desc = (order or "").lower() == "desc"
@@ -171,7 +182,6 @@ def list_assets_filtered(
     return [_asset_to_schema(a) for a in rows]
 
 def list_distinct_values(db: Session, column_name: str) -> list[str]:
-    # category/location 用の候補リスト
     col = getattr(AssetORM, column_name)
     stmt = select(col).where(col.is_not(None)).distinct().order_by(col.asc())
     return [r[0] for r in db.execute(stmt).all() if r[0]]
@@ -211,7 +221,6 @@ def loan_asset(db: Session, asset_id: str, borrower: str, due_at: Optional[datet
     db.commit()
     return True
 
-
 def return_asset(db: Session, asset_id: str) -> bool:
     a = db.get(AssetORM, asset_id)
     if not a:
@@ -219,7 +228,6 @@ def return_asset(db: Session, asset_id: str) -> bool:
 
     now = datetime.now(timezone.utc)
 
-    # アクティブな貸出を返却済みにする（あれば）
     stmt = (
         select(LoanORM)
         .where(LoanORM.asset_id == asset_id, LoanORM.returned_at.is_(None))
@@ -271,9 +279,7 @@ def bulk_import_assets(db: Session, rows: list[dict[str, str]]) -> dict:
 
     return {"created": created, "skipped": skipped, "errors": errors}
 
-
 def list_categories(db: Session) -> list[tuple[str, str]]:
-    """(id, name) のリスト。sort_order, name の順で返す"""
     rows = db.execute(
         select(CategoryORM.id, CategoryORM.name)
         .order_by(CategoryORM.sort_order.asc(), CategoryORM.name.asc())
@@ -287,7 +293,6 @@ def list_locations(db: Session) -> list[tuple[str, str]]:
     ).all()
     return [(r[0], r[1]) for r in rows]
 
-
 def create_category(db: Session, *, name: str, sort_order: int = 0) -> bool:
     name = (name or "").strip()
     if not name:
@@ -296,7 +301,7 @@ def create_category(db: Session, *, name: str, sort_order: int = 0) -> bool:
     if exists:
         return False
 
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(timezone.utc)
     c = CategoryORM(id=str(uuid4()), name=name, sort_order=sort_order, created_at=now, updated_at=now)
     db.add(c)
     db.commit()
@@ -310,12 +315,11 @@ def create_location(db: Session, *, name: str, sort_order: int = 0) -> bool:
     if exists:
         return False
 
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(timezone.utc)
     l = LocationORM(id=str(uuid4()), name=name, sort_order=sort_order, created_at=now, updated_at=now)
     db.add(l)
     db.commit()
     return True
-
 
 def rename_category(db: Session, *, category_id: str, new_name: str, cascade_assets: bool = True) -> bool:
     new_name = (new_name or "").strip()
@@ -326,7 +330,6 @@ def rename_category(db: Session, *, category_id: str, new_name: str, cascade_ass
     if not c:
         return False
 
-    # 同名チェック（自分以外）
     dup = db.execute(
         select(CategoryORM).where(CategoryORM.name == new_name, CategoryORM.id != category_id)
     ).first()
@@ -334,7 +337,7 @@ def rename_category(db: Session, *, category_id: str, new_name: str, cascade_ass
         return False
 
     old_name = c.name
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(timezone.utc)
     c.name = new_name
     c.updated_at = now
 
@@ -347,7 +350,6 @@ def rename_category(db: Session, *, category_id: str, new_name: str, cascade_ass
 
     db.commit()
     return True
-
 
 def rename_location(db: Session, *, location_id: str, new_name: str, cascade_assets: bool = True) -> bool:
     new_name = (new_name or "").strip()
@@ -365,7 +367,7 @@ def rename_location(db: Session, *, location_id: str, new_name: str, cascade_ass
         return False
 
     old_name = l.name
-    now = datetime.now(datetime.UTC)
+    now = datetime.now(timezone.utc)
     l.name = new_name
     l.updated_at = now
 
@@ -379,13 +381,11 @@ def rename_location(db: Session, *, location_id: str, new_name: str, cascade_ass
     db.commit()
     return True
 
-
 def delete_category(db: Session, *, category_id: str) -> bool:
     c = db.get(CategoryORM, category_id)
     if not c:
         return False
 
-    # 使用中なら削除不可（assetsは文字列なので name で見る）
     used = db.execute(
         select(func.count()).select_from(AssetORM).where(AssetORM.category == c.name)
     ).scalar_one()
@@ -395,7 +395,6 @@ def delete_category(db: Session, *, category_id: str) -> bool:
     db.execute(delete(CategoryORM).where(CategoryORM.id == category_id))
     db.commit()
     return True
-
 
 def delete_location(db: Session, *, location_id: str) -> bool:
     l = db.get(LocationORM, location_id)
@@ -411,3 +410,29 @@ def delete_location(db: Session, *, location_id: str) -> bool:
     db.execute(delete(LocationORM).where(LocationORM.id == location_id))
     db.commit()
     return True
+
+def get_or_create_category_id(db: Session, name: str | None) -> str | None:
+    name = (name or "").strip()
+    if not name:
+        return None
+    c = db.execute(select(CategoryORM).where(CategoryORM.name == name)).scalar_one_or_none()
+    if c:
+        return c.id
+    c = CategoryORM(id=str(uuid4()), name=name)
+    db.add(c)
+    db.commit()
+    db.refresh(c)
+    return c.id
+
+def get_or_create_location_id(db: Session, name: str | None) -> str | None:
+    name = (name or "").strip()
+    if not name:
+        return None
+    l = db.execute(select(LocationORM).where(LocationORM.name == name)).scalar_one_or_none()
+    if l:
+        return l.id
+    l = LocationORM(id=str(uuid4()), name=name)
+    db.add(l)
+    db.commit()
+    db.refresh(l)
+    return l.id
