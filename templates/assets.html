@@ -16,8 +16,8 @@
 
 {% set base_qs = "q=" ~ (q|urlencode)
   ~ "&status=" ~ (status|urlencode)
-  ~ "&category=" ~ (category|urlencode)
-  ~ "&location=" ~ (location|urlencode)
+  ~ "&category_id=" ~ (category_id|urlencode)
+  ~ "&location_id=" ~ (location_id|urlencode)
 %}
 
 <h1>備品一覧</h1>

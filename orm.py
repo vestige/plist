@@ -4,6 +4,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from db import Base
 
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
 class AssetORM(Base):
     __tablename__ = "assets"
 
@@ -45,8 +48,8 @@ class CategoryORM(Base):
 
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
 
 
 class LocationORM(Base):
@@ -57,5 +60,5 @@ class LocationORM(Base):
 
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
-    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utcnow, onupdate=utcnow)

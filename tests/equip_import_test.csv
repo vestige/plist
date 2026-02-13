@@ -1,0 +1,7 @@
+name,asset_tag,category,location,note
+HDMIケーブル,IT-0001,ケーブル,棚A,1.5m
+MacBook充電器,IT-0002,電源,棚B,USB-C 65W
+モニターアーム,IT-0003,周辺機器,倉庫,VESA 75/100
+LANケーブル 3m,IT-0004,ケーブル,棚A,Cat6
+,IT-0005,その他,棚C,← name空（エラー確認用）
+重複テスト,IT-0002,テスト,棚Z,← asset_tag重複（スキップ確認用）

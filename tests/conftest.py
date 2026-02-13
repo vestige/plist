@@ -1,6 +1,5 @@
 import os
 import importlib
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -53,6 +52,7 @@ def app_module(tmp_path_factory):
 
     # templatesディレクトリをテスト用に差し替え
     main.templates = Jinja2Templates(directory=str(tmpl_dir))
+    main.app.state.templates = main.templates
 
     return main
 
@@ -84,11 +84,13 @@ def db_session(app_module):
 
 @pytest.fixture(autouse=True)
 def clean_db(app_module, db_session):
-    # 各テスト前にテーブルを全消し（順序注意：loans -> assets）
+    # 各テスト前にテーブルを全消し（順序注意：loans -> assets -> masters）
     from sqlalchemy import delete
-    from orm import LoanORM, AssetORM
+    from orm import LoanORM, AssetORM, CategoryORM, LocationORM
 
     db_session.execute(delete(LoanORM))
     db_session.execute(delete(AssetORM))
+    db_session.execute(delete(CategoryORM))
+    db_session.execute(delete(LocationORM))
     db_session.commit()
     yield

@@ -3,6 +3,7 @@
 import argparse
 import csv
 import io
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -230,10 +231,9 @@ def bulk_insert_assets(
 
     sql = """
     INSERT OR IGNORE INTO assets
-      (id, name, asset_tag, category, location, note, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (id, name, asset_tag, category, location, category_id, location_id, note, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """
-
     conn.execute("BEGIN;")
     try:
         batch: list[tuple] = []
@@ -248,12 +248,25 @@ def bulk_insert_assets(
             location = (r.get("location") or "").strip() or None
             note = (r.get("note") or "").strip() or None
 
+            category_id = None
+            location_id = None
+
+            if category:
+                row = conn.execute("SELECT id FROM categories WHERE name = ?", (category,)).fetchone()
+                category_id = row[0] if row else None
+            if location:
+                row = conn.execute("SELECT id FROM locations WHERE name = ?", (location,)).fetchone()
+                location_id = row[0] if row else None
+
+
             batch.append((
                 str(uuid4()),
                 name,
                 asset_tag,
                 category,
                 location,
+                category_id,
+                location_id,
                 note,
                 "available",
                 now,
@@ -288,6 +301,12 @@ def main():
     ap.add_argument("--chunk", type=int, default=5000, help="Chunk size for executemany (default: 5000)")
     args = ap.parse_args()
 
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+    logger = logging.getLogger("bulk_load_sqlite")
+
     db_path = Path(args.db)
     conn = sqlite3.connect(db_path.as_posix())
     try:
@@ -296,7 +315,7 @@ def main():
 
         if args.wipe:
             wipe_all(conn)
-            print("Wipe: OK (assets/loans/categories/locations deleted)")
+            logger.info("Wipe OK (assets/loans/categories/locations deleted)")
 
         if args.csv:
             csv_path = Path(args.csv)
@@ -306,18 +325,25 @@ def main():
             rows = parse_csv_rows(csv_path)
 
             master_result = bulk_upsert_masters_from_rows(conn, rows, chunk_size=args.chunk)
-            print(
-                "Masters: "
-                f"categories_created={master_result['categories_created']}/{master_result['categories_total']} "
-                f"locations_created={master_result['locations_created']}/{master_result['locations_total']}"
+            logger.info(
+                "Masters categories_created=%s/%s locations_created=%s/%s",
+                master_result["categories_created"],
+                master_result["categories_total"],
+                master_result["locations_created"],
+                master_result["locations_total"],
             )
 
             result = bulk_insert_assets(conn, rows, chunk_size=args.chunk)
-            print(f"Assets: created={result['created']} skipped={result['skipped']} errors={len(result['errors'])}")
+            logger.info(
+                "Assets created=%s skipped=%s errors=%s",
+                result["created"],
+                result["skipped"],
+                len(result["errors"]),
+            )
             if result["errors"]:
-                print("Errors (first 10):")
+                logger.warning("Errors (first 10):")
                 for e in result["errors"][:10]:
-                    print("  -", e)
+                    logger.warning("  - %s", e)
 
     finally:
         conn.close()

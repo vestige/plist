@@ -1,6 +1,10 @@
 # tests/test_category_delete_guard.py
 
-def test_category_delete_guard(client):
+from sqlalchemy import select
+
+from orm import CategoryORM
+
+def test_category_delete_guard(client, db_session):
     # カテゴリ作成
     client.post("/ui/categories", data={"name": "Monitor"})
 
@@ -14,10 +18,16 @@ def test_category_delete_guard(client):
         },
     )
 
+    category_id = db_session.execute(
+        select(CategoryORM.id).where(CategoryORM.name == "Monitor")
+    ).scalar_one()
+
     # カテゴリ削除を試みる
-    r = client.post("/ui/categories/Monitor/delete")
+    r = client.post(f"/ui/categories/{category_id}/delete")
     assert r.status_code in (200, 303)
 
     # まだ残っている
-    r = client.get("/ui/categories")
-    assert "Monitor" in r.text
+    db_session.expire_all()
+    remaining = db_session.get(CategoryORM, category_id)
+    assert remaining is not None
+    assert remaining.name == "Monitor"
